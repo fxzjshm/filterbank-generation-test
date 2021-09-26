@@ -9,6 +9,9 @@ include(cmake/variables.cmake)
 
 find_package(OpenCL REQUIRED)
 find_package(clFFT REQUIRED)
+find_package(Boost 1.61 COMPONENTS program_options REQUIRED)
+
+set(CMAKE_CXX_STANDARD 17) 
 
 # ---- Declare executable ----
 
@@ -21,8 +24,8 @@ set_target_properties(
     EXPORT_NAME filterbank-generation-test
 )
 
-target_include_directories(filterbank-generation-test_filterbank-generation-test PRIVATE ${OPENCL_INCLUDE_DIR} ${CLFFT_INCLUDE_DIR})
-target_link_libraries(filterbank-generation-test_filterbank-generation-test ${OPENCL_LIBRARIES} ${CLFFT_LIBRARIES})
+target_include_directories(filterbank-generation-test_filterbank-generation-test PRIVATE ${OPENCL_INCLUDE_DIR} ${CLFFT_INCLUDE_DIR} ${Boost_INCLUDE_DIR})
+target_link_libraries(filterbank-generation-test_filterbank-generation-test ${OPENCL_LIBRARIES} ${CLFFT_LIBRARIES} ${Boost_LIBRARIES})
 
 
 # ---- Developer mode ----
