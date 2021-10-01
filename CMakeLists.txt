@@ -15,18 +15,20 @@ set(CMAKE_CXX_STANDARD 17)
 
 # ---- Declare executable ----
 
-add_executable(filterbank-generation-test_filterbank-generation-test source/main.cpp)
-add_executable(filterbank-generation-test::filterbank-generation-test ALIAS filterbank-generation-test_filterbank-generation-test)
+add_executable(filterbank-generation-test source/main.cpp)
+add_executable(pad_filterbank source/pad_filterbank.cpp)
 
-set_target_properties(
-    filterbank-generation-test_filterbank-generation-test PROPERTIES
-    OUTPUT_NAME filterbank-generation-test
-    EXPORT_NAME filterbank-generation-test
-)
+# set_target_properties(
+#     filterbank-generation-test_filterbank-generation-test PROPERTIES
+#     OUTPUT_NAME filterbank-generation-test
+#     EXPORT_NAME filterbank-generation-test
+# )
 
-target_include_directories(filterbank-generation-test_filterbank-generation-test PRIVATE ${OPENCL_INCLUDE_DIR} ${CLFFT_INCLUDE_DIR} ${Boost_INCLUDE_DIR})
-target_link_libraries(filterbank-generation-test_filterbank-generation-test ${OPENCL_LIBRARIES} ${CLFFT_LIBRARIES} ${Boost_LIBRARIES})
+target_include_directories(filterbank-generation-test PRIVATE ${OPENCL_INCLUDE_DIR} ${CLFFT_INCLUDE_DIR} ${Boost_INCLUDE_DIR})
+target_link_libraries(filterbank-generation-test ${OPENCL_LIBRARIES} ${CLFFT_LIBRARIES} ${Boost_LIBRARIES})
 
+target_include_directories(pad_filterbank PRIVATE ${Boost_INCLUDE_DIR})
+target_link_libraries(pad_filterbank ${Boost_LIBRARIES})
 
 # ---- Developer mode ----
 
