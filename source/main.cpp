@@ -34,17 +34,19 @@ int main(int argc, char **argv) {
     /* clang-format off */
     general_option.add_options()
         ("help,h", "Show help message")
-        ("input_file,f", value<std::string>(), "Input file")
-        ("output_file,o", value<std::string>(), "Output file")
-        ("text", "Read input file as text")
-        ("inverse", "Transform filterbank to wave")
+        ("input_file,f", value<std::string>()->required(), "Input file")
+        ("output_file,o", value<std::string>()->required(), "Output file")
+        ("in_text", "Read input file as text")
+        ("out_text", "Write output file as text")
+        ("inverse", "Transform padded filterbank to wave")
+        ("no_flip", "Don't flip output data")
     ;
     fft_option.add_options()
-        ("nsamp_seg", value<size_t>(), "Number of points to be FFT-ed in one segment")
+        ("nsamp_seg", value<size_t>()->required(), "Number of points to be FFT-ed in one segment")
         ("seg_count", value<size_t>()->default_value(1), "Number of segments of points to be FFT-ed at one kernel call")
         ("sample_rate", value<float>(), "Sample rate of input time series")
-        ("fmin", value<float>(), "Min of frequency of output channel")
-        ("fmax", value<float>(), "Max of frequency of output channel")
+        ("fmin", value<float>(), "Min of frequency of output channel, default to 0.0")
+        ("fmax", value<float>(), "Max of frequency of output channel, default to max frequency of the fft result")
     ;
     /* clang-format on */
     all_option.add(general_option).add(fft_option);
@@ -101,7 +103,7 @@ int main(int argc, char **argv) {
     std::string in_file_name = vm["input_file"].as<std::string>();
     size_t in_file_nsamps;
     std::vector<data_type> h_in;
-    if (vm.count("text")) {
+    if (vm.count("in_text")) {
         std::ifstream in_file_stream(in_file_name);
         // h_in = std::vector<data_type>(std::istream_iterator<data_type>(in_file_stream), {});
         data_type tmp;
@@ -123,6 +125,7 @@ int main(int argc, char **argv) {
     size_t out_part_file_nsamps = out_part_nsamp_seg * seg_count_all;
     std::vector<data_type> h_out_complex(2 * out_file_nsamps), h_out_real(out_file_nsamps);
     std::vector<data_type> h_out_part(out_part_file_nsamps);
+    std::string out_cut_file_name = vm["output_file"].as<std::string>();
 
     // Set up device side
     namespace bc = boost::compute;
@@ -138,9 +141,9 @@ int main(int argc, char **argv) {
     // Print info
     // ------------
     /* clang-format off */
-    std::cout << "in_nsamp_seg = " << in_nsamp_seg << std::endl
+    std::cout << "in_nsamp_seg = " << in_nsamp_seg << ", " << "out_nsamp_seg = " << out_nsamp_seg << std::endl
               << "seg_count = " << seg_count << std::endl
-              << "in_file_name = " << in_file_name << std::endl
+              << "in_file_name = " << in_file_name << ", " << "out_cut_file_name = " << out_cut_file_name << std::endl
               << "in_file_nsamps = " << in_file_nsamps << std::endl
               << "fmin = " << fmin << "  " << "fmax = " << fmax << "  " << "df = " << df << std::endl
               << "fmin_id = " << fmin_id << "  " << "fmax_id = " << fmax_id << std::endl;
@@ -167,21 +170,52 @@ int main(int argc, char **argv) {
 
     fft_caller.teardown();
 
-    start_timer(copy_timer);
-    for (size_t i = 0; i < seg_count_all; i++) {
-        for (size_t j = 0; j < out_part_nsamp_seg; j++) {
-            size_t h_out_part_idx = out_part_nsamp_seg * i + j;
-            size_t h_out_real_idx = out_nsamp_seg * i + (fmax_id - j);
-            assert(h_out_part_idx < h_out_part.size());
-            assert(h_out_real_idx < h_out_real.size());
-            h_out_part[h_out_part_idx] = h_out_real[h_out_real_idx];
+    if (!inverse) {
+        start_timer(copy_timer);
+        if (!vm.count("no_flip")) {
+            for (size_t i = 0; i < seg_count_all; i++) {
+                for (size_t j = 0; j < out_part_nsamp_seg; j++) {
+                    size_t h_out_part_idx = out_part_nsamp_seg * i + j;
+                    size_t h_out_real_idx = out_nsamp_seg * i + (fmax_id - j);
+                    assert(h_out_part_idx < h_out_part.size());
+                    assert(h_out_real_idx < h_out_real.size());
+                    h_out_part[h_out_part_idx] = h_out_real[h_out_real_idx];
+                }
+                // write_vector(h_out_part, out_part_nsamp_seg, seg_count_all, std::string("fil-test-part") + std::to_string(i) + ".txt");
+            }
+        } else {
+            for (size_t i = 0; i < seg_count_all; i++) {
+                size_t h_out_part_idx = out_part_nsamp_seg * i;
+                size_t h_out_real_idx = out_nsamp_seg * i + fmin_id;
+                assert(h_out_part_idx + out_part_nsamp_seg <= h_out_part.size());
+                assert(h_out_real_idx - fmin_id + out_nsamp_seg <= h_out_real.size());
+                bc::copy(h_out_real.begin() + h_out_real_idx, h_out_real.begin() + h_out_real_idx + out_part_nsamp_seg, h_out_part.begin() + h_out_part_idx);
+                // write_vector(h_out_part, out_part_nsamp_seg, seg_count_all, std::string("fil-test-part") + std::to_string(i) + ".txt");
+            }
         }
-        // write_vector(h_out_part, out_part_nsamp_seg, seg_count_all, std::string("fil-test-part") + std::to_string(i) + ".txt");
-    }
-    stop_timer(copy_timer);
+        stop_timer(copy_timer);
 
-    // ------------
+        // ------------
+        start_timer(write_timer);
+        if (vm.count("out_text")) {
+            write_vector(h_out_part, out_part_nsamp_seg, seg_count_all, out_cut_file_name);
+        } else {
+            write_vector_binary(h_out_part, out_part_nsamp_seg * seg_count_all, out_cut_file_name);
+        }
+        stop_timer(write_timer);
+    } else {
+        start_timer(write_timer);
+        if (vm.count("out_text")) {
+            write_vector(h_out_real, out_nsamp_seg, seg_count_all, out_cut_file_name);
+        } else {
+            write_vector_binary(h_out_real, out_nsamp_seg * seg_count_all, out_cut_file_name);
+        }
+        stop_timer(write_timer);
+    }
+
     start_timer(write_timer);
+    // DEBUG
+    /*
     write_vector(h_in, in_file_nsamps, 1, "fil-test-in-1d.txt");
     write_vector(h_in, in_nsamp_seg, seg_count_all, "fil-test-in-2d.txt");
     write_vector(h_out_complex, 2 * out_nsamp_seg, seg_count_all, "fil-test-complex.txt");
@@ -191,8 +225,10 @@ int main(int argc, char **argv) {
         write_vector(h_out_real, "fil-test-real.txt");
     }
     write_vector(h_out_part, out_part_nsamp_seg, seg_count_all, "fil-test-part.txt");
+    */
     stop_timer(write_timer);
     std::cout << "write_timer: " << write_timer.getTime() << std::endl;
+
     // ------------
 
     return 0;
