@@ -16,11 +16,14 @@
 #include <iostream>
 
 #include "benchmark.hpp"
+#include "global_variable.hpp"
 #include "io.hpp"
 #include "kernel.hpp"
 #include "types.h"
 
 Stopwatch setup_timer, generate_timer, fft_timer, normalize_timer, copy_timer, write_timer;
+
+boost::program_options::variables_map vm;
 
 int main(int argc, char **argv) {
     std::ios::sync_with_stdio(false);
@@ -34,25 +37,25 @@ int main(int argc, char **argv) {
     /* clang-format off */
     general_option.add_options()
         ("help,h", "Show help message")
-        ("input_file,f", value<std::string>()->required(), "Input file")
-        ("output_file,o", value<std::string>()->required(), "Output file")
+        ("input_file,f,i", value<std::string>(), "Input file")
+        ("output_file,o", value<std::string>(), "Output file")
         ("in_text", "Read input file as text")
         ("out_text", "Write output file as text")
         ("inverse", "Transform padded filterbank to wave")
         ("no_flip", "Don't flip output data")
     ;
     fft_option.add_options()
-        ("nsamp_seg", value<size_t>()->required(), "Number of points to be FFT-ed in one segment")
+        ("nsamp_seg", value<size_t>(), "Number of points to be FFT-ed in one segment")
         ("seg_count", value<size_t>()->default_value(1), "Number of segments of points to be FFT-ed at one kernel call")
         ("sample_rate", value<float>(), "Sample rate of input time series")
         ("fmin", value<float>(), "Min of frequency of output channel, default to 0.0")
         ("fmax", value<float>(), "Max of frequency of output channel, default to max frequency of the fft result")
+        ("pick_real_part", "Pick real part instead of normalize when converting complex nomber to real number")
     ;
     /* clang-format on */
     all_option.add(general_option).add(fft_option);
     boost::program_options::positional_options_description p;
     p.add("input_file", 1);
-    boost::program_options::variables_map vm;
     boost::program_options::store(boost::program_options::command_line_parser(argc, argv).options(all_option).positional(p).run(), vm);
     boost::program_options::notify(vm);
 

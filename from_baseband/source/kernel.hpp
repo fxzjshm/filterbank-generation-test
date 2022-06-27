@@ -7,13 +7,12 @@
 
 #include "benchmark.hpp"
 #include "checks.hpp"
+#include "global_variable.hpp"
 #include "io.hpp"
 #include <boost/compute/command_queue.hpp>
 #include <boost/compute/container/vector.hpp>
 #include <boost/compute/utility/source.hpp>
 #include <clFFT.h>
-
-extern Stopwatch setup_timer, generate_timer, fft_timer, normalize_timer, copy_timer, write_timer;
 
 std::string kernel_source = BOOST_COMPUTE_STRINGIZE_SOURCE(
     __kernel void generate(__global data_type *d_in, ulong nsamp /*, data_type dt*/) {
@@ -132,8 +131,13 @@ public:
 
             start_timer(normalize_timer);
             if (!inverse) {
-                normalize_kernel.set_args(d_out_complex.get_buffer().get(), d_out_real.get_buffer().get());
-                queue.enqueue_1d_range_kernel(normalize_kernel, 0, out_nsamp, 0);
+                if (vm.count("pick_real_part")) {
+                    pick_real_kernel.set_args(d_out_complex.get_buffer().get(), d_out_real.get_buffer().get());
+                    queue.enqueue_1d_range_kernel(pick_real_kernel, 0, out_nsamp, 0);
+                } else {
+                    normalize_kernel.set_args(d_out_complex.get_buffer().get(), d_out_real.get_buffer().get());
+                    queue.enqueue_1d_range_kernel(normalize_kernel, 0, out_nsamp, 0);
+                }
             }
             stop_timer(normalize_timer);
 
