@@ -67,15 +67,25 @@ def main():
         srtb_config.rawdatafile = file_name
         nsamples = 0
         datas.clear()
+        data_counter = -1
+        data = bytes()
 
         while nsamples < srtb_config.nsamples:
-            data = sock.recv(srtb_config.BUFFER_SIZE)
-            # 8 byte uint64 counter + 4096 FFT content
-            data_counter = struct.unpack("Q", data[:8])[0]
+            while True:
+                data = sock.recv(srtb_config.BUFFER_SIZE)
+                # data structure:
+                #     xxxxxxxxxxxxxx......xxxxxx  <-- one sample
+                #     |------||-----......-----|
+                #      counter `nchan` channels
+                #      8 bytes  nchan * nbits/8 bytes
+                data_counter = struct.unpack("Q", data[:8])[0]
+                # break this loop if don't need to start from 0, or have started reading, or has read 0
+                if (not srtb_config.start_from_counter_zero) or (nsamples != 0) or (data_counter == 0):
+                    break
             data_content = data[8:]
             data_length = len(data_content)
             if data_length != srtb_config.nchans * srtb_config.nbits / 8 :
-                print(f"[WARNING] length mismatch, received length = {data_length}, nchan = {srtb_config.nchans}, nbits = {srtb_config.nbits}, ignoring.")
+                print(f"[WARNING] length mismatch, received length = {data_length}, expected nchan = {srtb_config.nchans}, nbits = {srtb_config.nbits}, ignoring.")
                 continue
             if data_counter != counter + 1:
                 print(f"[WARNING] data loss detected: skipping {data_counter - counter - 1} packets.")
