@@ -57,20 +57,25 @@ def main():
     # on this port, listen ONLY to MCAST_GRP
     sock.bind((srtb_config.MCAST_GRP, srtb_config.MCAST_PORT))
 
-    datas = bytearray()
-    counter = -1
+    counter = -1  # last read counter, i.e. condition: data_counter == counter + 1:
 
     while True:
+        # generate tstart, file_name
         srtb_config.tstart = astropy.time.Time(time.time(), format="unix").mjd
         file_name = srtb_config.filename_prefix + str("_{:.8f}.fil").format(srtb_config.tstart)
         print(f"[INFO] receiving to {file_name}") 
         srtb_config.rawdatafile = file_name
+
+        # open file handle
+        outfile = open(file_name, 'wb')
+        header = generate_filterbank_header()
+        outfile.write(header)
+
         nsamples = 0
-        datas.clear()
-        data_counter = -1
-        data = bytes()
+        data = bytes()  # received udp data
 
         while nsamples < srtb_config.nsamples:
+            data_counter = -1  # counter read from udp packet
             while True:
                 data = sock.recv(srtb_config.BUFFER_SIZE)
                 # data structure:
@@ -92,15 +97,10 @@ def main():
             nsamples += 1
             counter = data_counter
             #print(f"[DEBUG] nsamples = {nsamples}")
-            datas += data_content
+            outfile.write(data_content)
         
-        assert nsamples == srtb_config.nsamples
-
-        outfile = open(file_name, 'wb')
-        header = generate_filterbank_header()
-        outfile.write(header)
-        outfile.write(datas)
         outfile.close()
+
 
 if __name__ == "__main__":
     main()
