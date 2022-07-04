@@ -22,6 +22,9 @@ import argparse
 
 
 def main():
+    print("[INFO] this piece of code is deprecated (because sigpyproc isn't handling `nifs` parameter),")
+    print("[INFO] use blimpy (`pip3 install blimpy`) instead.")
+
     parser = argparse.ArgumentParser(description="Dedisperse filterbank, and write time series or show heatmap")
     parser.add_argument("input", type=str, help="input .fil file")
     parser.add_argument("output", type=str, help="output file path, will show plot if invalid", default="")
