@@ -17,6 +17,7 @@ try:
 except ImportError:
     import __presto.sigproc as sigproc
 
+from logging import raiseExceptions
 import astropy.time
 import time
 # UDP multicast receive ref: https://stackoverflow.com/questions/603852/how-do-you-udp-multicast-in-python
@@ -44,6 +45,7 @@ def generate_filterbank_header():
     header += sigproc.addto_hdr("tsamp", srtb_config.tsamp)
     header += sigproc.addto_hdr("nbeams", srtb_config.nbeams)
     header += sigproc.addto_hdr("nbits", srtb_config.nbits)
+    header += sigproc.addto_hdr("nifs", srtb_config.nifs)
     header += sigproc.addto_hdr("src_raj", srtb_config.src_raj)
     header += sigproc.addto_hdr("src_dej", srtb_config.src_dej)
     header += sigproc.addto_hdr("tstart", srtb_config.tstart)
@@ -97,7 +99,14 @@ def main():
             nsamples += 1
             counter = data_counter
             #print(f"[DEBUG] nsamples = {nsamples}")
-            outfile.write(data_content)
+            if srtb_config.nifs == 2 and srtb_config.deinterlace_channel == True:
+                if srtb_config.nbits == 8:
+                    outfile.write(data_content[0::2])
+                    outfile.write(data_content[1::2])
+                else:
+                    raise Exception("deinterlace_channel: TODO: nbits == 1, 2, 4")
+            else:
+                outfile.write(data_content)
         
         outfile.close()
 

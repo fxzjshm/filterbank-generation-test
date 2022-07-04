@@ -11,6 +11,7 @@ nchans = 4096  # channel count, should be checked during runtime
 tsamp = 0.001  # time interval for a sample
 nbeams = 1
 nbits = 8  # data type
+nifs = 2  # polar directions
 src_raj = 0.0  # source location
 src_dej = 0.0  # source location
 tstart = 59728.04167  # start time of observe, should be auto updated
@@ -25,3 +26,4 @@ BUFFER_SIZE = 10240
 filename_prefix = "pp"
 # it is said that in formal observe the udp pack counter (first 8 bytes of a packet, in `uint64`` or `unsigned long long`) should start with 0
 start_from_counter_zero = False
+deinterlace_channel = True
