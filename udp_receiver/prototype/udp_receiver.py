@@ -17,7 +17,6 @@ try:
 except ImportError:
     import __presto.sigproc as sigproc
 
-from logging import raiseExceptions
 import astropy.time
 import time
 # UDP multicast receive ref: https://stackoverflow.com/questions/603852/how-do-you-udp-multicast-in-python
@@ -91,7 +90,7 @@ def main():
                     break
             data_content = data[8:]
             data_length = len(data_content)
-            if data_length != srtb_config.nchans * srtb_config.nbits / 8 :
+            if data_length != srtb_config.nifs * srtb_config.nchans * srtb_config.nbits / 8 :
                 print(f"[WARNING] length mismatch, received length = {data_length}, expected nchan = {srtb_config.nchans}, nbits = {srtb_config.nbits}, ignoring.")
                 continue
             if data_counter != counter + 1:
