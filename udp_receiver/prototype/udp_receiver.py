@@ -100,10 +100,10 @@ def main():
             #print(f"[DEBUG] nsamples = {nsamples}")
             if srtb_config.nifs == 2 and srtb_config.deinterlace_channel == True:
                 if srtb_config.nbits == 8:
-                    outfile.write(data_content[0::2])
-                    outfile.write(data_content[1::2])
+                    outfile.write(data_content[::-2])
+                    outfile.write(data_content[-2::-2])
                 else:
-                    raise Exception("deinterlace_channel: TODO: nbits == 1, 2, 4")
+                    raise Exception("deinterlace_channel: TODO: nbits == 1, 2, 4 and reverse")
             else:
                 outfile.write(data_content)
         
