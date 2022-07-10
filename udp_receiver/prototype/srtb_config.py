@@ -12,14 +12,17 @@ src_dej = +220052.2  # source location in ddmmss.s
 nsamples = 1000000  # target nsamples for a file, take care of memory
 filename_prefix = "sun"
 
-## telescope
-telescope_id = 7
-machine_id = 255
-data_type = 1  # filterbank data = 1, time series = 2
+## FFT
+### ** foff < 0 so that `dedisperse` can work. If foff > 0, set fch1 and reverse_channel accordingly **
 fch1 = 1500.0 - 500.0/1024.0  # frequency of the first channel
 foff = -500.0/1024.0  # \delta f between two channels
 nchans = 1024  # channel count, should be checked during runtime
 tsamp = 0.000001*2.048*(acc+1)  # time interval for a sample
+data_type = 1  # filterbank data = 1, time series = 2
+
+## telescope
+telescope_id = 7
+machine_id = 255
 nbeams = 1
 nbits = 8  # data type
 nifs = 2  # polar directions
