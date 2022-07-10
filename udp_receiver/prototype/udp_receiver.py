@@ -12,11 +12,8 @@
 # See the Mulan PubL v2 for more details.
 ################################################################################
 
-try:
-    import presto.sigproc as sigproc
-except ImportError:
-    import __presto.sigproc as sigproc
-
+# sigproc writer from PRESTO (https://github.com/scottransom/presto) is used
+import __presto.sigproc as sigproc
 import astropy.time
 import time
 # UDP multicast receive ref: https://stackoverflow.com/questions/603852/how-do-you-udp-multicast-in-python
@@ -98,14 +95,28 @@ def main():
             nsamples += 1
             counter = data_counter
             #print(f"[DEBUG] nsamples = {nsamples}")
+            
+            # input data may be interlaced:
+            #         if(1)ch(1)  if(2)ch(1)  if(1)ch(2)  if(2)ch(2)  ...  if(1)ch(nchans)  if(2)ch(nchans)
+            # but sigproc .fil requires:
+            #         if(1)ch(1)  if(1)ch(2)  ...  if(1)ch(nchans)  if(2)ch(1)  if(2)ch(2)  ...  if(2)ch(nchans)
+            # deinterlace is therefore required.
+            # moreover, `dedisperse`'s algorithm requires foff < 0, but input often has foff > 0, so need to reverse channels.
             if srtb_config.nifs == 2 and srtb_config.deinterlace_channel == True:
                 if srtb_config.nbits == 8:
-                    outfile.write(data_content[::-2])
-                    outfile.write(data_content[-2::-2])
+                    if srtb_config.reverse_channel == True:
+                        outfile.write(data_content[::-2])
+                        outfile.write(data_content[-2::-2])
+                    else:
+                        outfile.write(data_content[0::2])
+                        outfile.write(data_content[1::2])
                 else:
                     raise Exception("deinterlace_channel: TODO: nbits == 1, 2, 4 and reverse")
             else:
-                outfile.write(data_content)
+                if srtb_config.reverse_channel == True:
+                    outfile.write(data_content[::-1])
+                else:
+                    outfile.write(data_content)
         
         outfile.close()
 
