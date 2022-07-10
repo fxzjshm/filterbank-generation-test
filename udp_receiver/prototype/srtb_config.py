@@ -20,15 +20,15 @@ nchans = 1024  # channel count, should be checked during runtime
 tsamp = 0.000001*2.048*(acc+1)  # time interval for a sample
 data_type = 1  # filterbank data = 1, time series = 2
 
+deinterlace_channel = True
+reverse_channel = True
+
 ## telescope
 telescope_id = 7
 machine_id = 255
 nbeams = 1
 nbits = 8  # data type
 nifs = 2  # polar directions
-
-deinterlace_channel = True
-reverse_channel = True
 
 ## dummy
 rawdatafile = "test.fil"  # replaced by generated name
