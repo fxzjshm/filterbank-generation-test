@@ -10,7 +10,8 @@ src_dej = +220052.2  # source location in ddmmss.s
 
 ## file
 nsamples = 1000000  # target nsamples for a file, take care of memory
-filename_prefix = "sun"
+filename_prefix = source_name
+data_location = ""  # the dir to save received data to, leave this blank to use current location.
 
 ## FFT
 ### ** foff < 0 so that `dedisperse` can work. If foff > 0, set fch1 and reverse_channel accordingly **
@@ -42,3 +43,5 @@ BUFFER_SIZE = 10240
 # misc
 # it is said that in formal observe the udp pack counter (first 8 bytes of a packet, in `uint64`` or `unsigned long long`) should start with 0
 start_from_counter_zero = False
+
+# srtb = simple radio telescope backend

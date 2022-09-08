@@ -65,7 +65,7 @@ def main():
         srtb_config.rawdatafile = file_name
 
         # open file handle
-        outfile = open(file_name, 'wb')
+        outfile = open(srtb_config.data_location + file_name, 'wb')
         header = generate_filterbank_header()
         outfile.write(header)
 
