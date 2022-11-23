@@ -29,7 +29,8 @@ telescope_id = 7
 machine_id = 255
 nbeams = 1
 nbits = 8  # data type
-nifs = 2  # polar directions
+nifs = 1  # polar directions
+sum_ifs = True # if sums, should nifs be 1?
 
 ## dummy
 rawdatafile = "test.fil"  # replaced by generated name

@@ -19,6 +19,7 @@ import time
 # UDP multicast receive ref: https://stackoverflow.com/questions/603852/how-do-you-udp-multicast-in-python
 import socket
 import struct
+import numpy as np
 
 import srtb_config
 
@@ -72,6 +73,10 @@ def main():
         nsamples = 0
         data = bytes()  # received udp data
 
+        expected_data_length = srtb_config.nifs * srtb_config.nchans * srtb_config.nbits / 8
+        if srtb_config.sum_ifs == True:
+            expected_data_length *= 2
+
         while nsamples < srtb_config.nsamples:
             data_counter = -1  # counter read from udp packet
             while True:
@@ -87,7 +92,8 @@ def main():
                     break
             data_content = data[8:]
             data_length = len(data_content)
-            if data_length != srtb_config.nifs * srtb_config.nchans * srtb_config.nbits / 8 :
+            
+            if data_length != expected_data_length :
                 print(f"[WARNING] length mismatch, received length = {data_length}, expected nchan = {srtb_config.nchans}, nbits = {srtb_config.nbits}, ignoring.")
                 continue
             if data_counter != counter + 1:
@@ -98,11 +104,30 @@ def main():
             
             # input data may be interlaced:
             #         if(1)ch(1)  if(2)ch(1)  if(1)ch(2)  if(2)ch(2)  ...  if(1)ch(nchans)  if(2)ch(nchans)
-            # but sigproc .fil requires:
-            #         if(1)ch(1)  if(1)ch(2)  ...  if(1)ch(nchans)  if(2)ch(1)  if(2)ch(2)  ...  if(2)ch(nchans)
-            # deinterlace is therefore required.
+            # choices:
+            ## 1) one needs summed/averaged results, i.e. 
+            ##         ((if(1)+if(2))/2)ch(1)  ((if(1)+if(2))/2)ch(2)  ...  ((if(1)+if(2))/2)ch(nchans)
+            ## 2) one needs two polarizations, however sigproc .fil requires:
+            ##         if(1)ch(1)  if(1)ch(2)  ...  if(1)ch(nchans)  if(2)ch(1)  if(2)ch(2)  ...  if(2)ch(nchans)
+            ## deinterlace is therefore required.
+            ## 3) do not do extra process
             # moreover, `dedisperse`'s algorithm requires foff < 0, but input often has foff > 0, so need to reverse channels.
-            if srtb_config.nifs == 2 and srtb_config.deinterlace_channel == True:
+            if srtb_config.sum_ifs == True:
+                if srtb_config.nbits == 8:
+                    # average every two bytes
+                    # ref: https://stackoverflow.com/questions/15956309/averaging-over-every-n-elements-of-a-numpy-array
+                    #      https://stackoverflow.com/questions/47637758/how-can-i-make-a-numpy-ndarray-from-bytes
+                    #outfile.write(bytes([round((a + b) / 2) for a, b in zip(data_content[::2], data_content[1::2])]))
+                    np_array = np.frombuffer(data_content, dtype=np.uint8)
+                    np_meaned = np.round(np.mean(np_array.reshape(-1, 2), axis=1))
+                    data_meaned = np_meaned.astype(np.uint8).tobytes()
+                    if srtb_config.reverse_channel == True:
+                        outfile.write(data_meaned[::-1])
+                    else:
+                        outfile.write(data_meaned)
+                else:
+                    raise Exception("sum_ifs: TODO: nbits == 1, 2, 4 and reverse")
+            elif srtb_config.nifs == 2 and srtb_config.deinterlace_channel == True:
                 if srtb_config.nbits == 8:
                     if srtb_config.reverse_channel == True:
                         outfile.write(data_content[::-2])
