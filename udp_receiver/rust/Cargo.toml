@@ -1,0 +1,19 @@
+[package]
+name = "filterbank_udp_receiver"
+version = "0.1.0"
+edition = "2021"
+authors = ["fxzjshm"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[profile.release]
+lto = true
+
+[dependencies]
+chrono = "0.4.23"
+julianday = "1.2.0"
+sigproc_filterbank = "0.3.0"
+
+[dependencies.pyo3]
+version = "0.15.1"  # for Python 3.6 on a CentOS 7 machine
+features = ["auto-initialize"]

@@ -1,0 +1,3 @@
+# https://stackoverflow.com/questions/72673668/cannot-set-rustflags-target-cpu-native-in-cargo-toml-simd-json
+[build]
+rustflags = ["-C", "target-cpu=native"]
