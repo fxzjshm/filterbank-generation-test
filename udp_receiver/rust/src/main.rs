@@ -198,8 +198,8 @@ fn main() {
               // rustc, listen, you must generate SIMD instructions, make use of ymm registers on amd64, do you understand ?!
               unsafe {
                 *output_buffer.get_unchecked_mut(output_length - i - 1) =
-                  ((*packet_buffer.get_unchecked(offset + 2 * i) as f32)
-                    + (*packet_buffer.get_unchecked(offset + 2 * i + 1) as f32) / 2.0f32) as u8;
+                  ((*packet_buffer.get_unchecked(offset + 2 * i)) / 2
+                    + (*packet_buffer.get_unchecked(offset + 2 * i + 1) / 2));
               }
               // verify: (with debug info)
               // cargo objdump --release -- -S -C -d > /tmp/filterbank_udp_receiver.txt
@@ -208,9 +208,8 @@ fn main() {
             for i in 0..output_length {
               //output_buffer[i] = ((packet_buffer[offset + 2 * i] / 2) + (packet_buffer[offset + 2 * i + 1] / 2));
               unsafe {
-                *output_buffer.get_unchecked_mut(i) = ((*packet_buffer.get_unchecked(offset + 2 * i) as f32)
-                  + (*packet_buffer.get_unchecked(offset + 2 * i + 1) as f32) / 2.0f32)
-                  as u8;
+                *output_buffer.get_unchecked_mut(i) = ((*packet_buffer.get_unchecked(offset + 2 * i) / 2)
+                  + (*packet_buffer.get_unchecked(offset + 2 * i + 1) / 2));
               }
             }
           }
