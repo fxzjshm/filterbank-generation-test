@@ -72,7 +72,8 @@ fn main() {
   let deinterlace_channel: bool = srtb_config.getattr("deinterlace_channel").unwrap().extract().unwrap();
   const udp_packet_max_size: usize = 65536;
   let mut packet_buffer = [0 as u8; udp_packet_max_size];
-  let mut output_buffer = vec![0 as u8; expected_written_data_length];
+  let mut output_buffer = [0 as u8; udp_packet_max_size];
+  let zeros_buffer = [0 as u8; udp_packet_max_size];
   const udp_receiver_counter_size: usize = std::mem::size_of::<udp_receiver_counter_type>();
 
   // check parameters, some are not supported
@@ -138,7 +139,7 @@ fn main() {
         continue;
       }
       let output_length = expected_written_data_length;
-      assert_eq!(output_length, output_buffer.len());
+      assert!(output_length <= output_buffer.len());
 
       // data structure:
       //     xxxxxxxxxxxxxx......xxxxxx  <-- one sample
@@ -163,7 +164,7 @@ fn main() {
             lost_packets
           );
           for _ in 0..lost_packets {
-            filterbank.push(&vec![0 as u8; output_length]);
+            filterbank.push(&zeros_buffer[0..output_length]);
           }
         }
       }
@@ -184,15 +185,33 @@ fn main() {
       if (sum_ifs == true) {
         if (nbits == 8) {
           // average every two bytes
+
+          // manually check boundaries
+          // the compiler isn't smart enough
+          assert!(offset + 2 * output_length <= packet_buffer.len());
+          assert!(output_length <= output_buffer.len());
           if (reverse_channel) {
             for i in 0..output_length {
-              output_buffer[output_length - i - 1] =
-                ((packet_buffer[offset + 2 * i] as f32) + (packet_buffer[offset + 2 * i + 1] as f32) / 2.0f32) as u8;
+              //output_buffer[output_length - i - 1] =
+              //  ((packet_buffer[offset + 2 * i] / 2) + (packet_buffer[offset + 2 * i + 1] / 2));
+
+              // rustc, listen, you must generate SIMD instructions, make use of ymm registers on amd64, do you understand ?!
+              unsafe {
+                *output_buffer.get_unchecked_mut(output_length - i - 1) =
+                  ((*packet_buffer.get_unchecked(offset + 2 * i) as f32)
+                    + (*packet_buffer.get_unchecked(offset + 2 * i + 1) as f32) / 2.0f32) as u8;
+              }
+              // verify: (with debug info)
+              // cargo objdump --release -- -S -C -d > /tmp/filterbank_udp_receiver.txt
             }
           } else {
             for i in 0..output_length {
-              output_buffer[i] =
-                ((packet_buffer[offset + 2 * i] as f32) + (packet_buffer[offset + 2 * i + 1] as f32) / 2.0f32) as u8;
+              //output_buffer[i] = ((packet_buffer[offset + 2 * i] / 2) + (packet_buffer[offset + 2 * i + 1] / 2));
+              unsafe {
+                *output_buffer.get_unchecked_mut(i) = ((*packet_buffer.get_unchecked(offset + 2 * i) as f32)
+                  + (*packet_buffer.get_unchecked(offset + 2 * i + 1) as f32) / 2.0f32)
+                  as u8;
+              }
             }
           }
         } else {
@@ -200,33 +219,54 @@ fn main() {
         }
       } else if (nifs == 2 && deinterlace_channel == true) {
         if (nbits == 8) {
+          assert!(output_length <= output_buffer.len());
+          assert!(offset + output_length <= packet_buffer.len());
           if (reverse_channel == true) {
             for i in 0..(output_length / 2) {
-              output_buffer[(output_length / 2) - 1 - i] = packet_buffer[offset + 2 * i];
-              output_buffer[output_length - 1 - i] = packet_buffer[offset + 2 * i + 1];
+              //output_buffer[(output_length / 2) - 1 - i] = packet_buffer[offset + 2 * i];
+              //output_buffer[output_length - 1 - i] = packet_buffer[offset + 2 * i + 1];
+              unsafe {
+                *output_buffer.get_unchecked_mut((output_length / 2) - 1 - i) =
+                  *packet_buffer.get_unchecked(offset + 2 * i);
+                *output_buffer.get_unchecked_mut(output_length - 1 - i) =
+                  *packet_buffer.get_unchecked(offset + 2 * i + 1)
+              }
             }
           } else {
             for i in 0..(output_length / 2) {
-              output_buffer[i] = packet_buffer[offset + 2 * i];
-              output_buffer[i + (output_length / 2)] = packet_buffer[offset + 2 * i + 1];
+              //output_buffer[i] = packet_buffer[offset + 2 * i];
+              //output_buffer[i + (output_length / 2)] = packet_buffer[offset + 2 * i + 1];
+              unsafe {
+                *output_buffer.get_unchecked_mut(i) = *packet_buffer.get_unchecked(offset + 2 * i);
+                *output_buffer.get_unchecked_mut(i + (output_length / 2)) =
+                  *packet_buffer.get_unchecked(offset + 2 * i + 1)
+              }
             }
           }
         } else {
           panic!("[main] deinterlace_channel: TODO: nbits == 1, 2, 4 and reverse");
         }
       } else {
+        assert!(output_length <= output_buffer.len());
+        assert!(offset + output_length <= packet_buffer.len());
         if (reverse_channel == true) {
           for i in 0..output_length {
-            output_buffer[output_length - 1 - i] = packet_buffer[offset + i];
+            //output_buffer[output_length - 1 - i] = packet_buffer[offset + i];
+            unsafe {
+              *output_buffer.get_unchecked_mut(output_length - 1 - i) = *packet_buffer.get_unchecked(offset + i);
+            }
           }
         } else {
           for i in 0..output_length {
-            output_buffer[i] = packet_buffer[offset + i];
+            //output_buffer[i] = packet_buffer[offset + i];
+            unsafe {
+              *output_buffer.get_unchecked_mut(i) = *packet_buffer.get_unchecked(offset + i);
+            }
           }
         }
       }
 
-      filterbank.push(&output_buffer);
+      filterbank.push(&output_buffer[0..output_length]);
     }
 
     file.write(&filterbank.bytes()).unwrap();

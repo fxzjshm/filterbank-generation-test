@@ -8,6 +8,7 @@ authors = ["fxzjshm"]
 
 [profile.release]
 lto = true
+debug = true
 
 [dependencies]
 chrono = "0.4.23"
