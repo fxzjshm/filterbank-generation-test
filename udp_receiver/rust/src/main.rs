@@ -20,6 +20,7 @@ use pyo3::prelude::*;
 use sigproc_filterbank;
 use std;
 use std::io::Write;
+use threadpool;
 
 type udp_receiver_counter_type = u64;
 
@@ -33,6 +34,7 @@ fn main() {
   py.run("import sys", None, None).unwrap();
   py.run(import_code.as_str(), None, None).unwrap();
   let srtb_config = PyModule::import(py, "srtb_config").expect("Cannot evaluate srtb_config");
+  let thread_pool = threadpool::Builder::new().build();
 
   // bind to address
   let udp_ip: String = srtb_config.getattr("MCAST_GRP").unwrap().extract().unwrap();
@@ -72,8 +74,8 @@ fn main() {
   let deinterlace_channel: bool = srtb_config.getattr("deinterlace_channel").unwrap().extract().unwrap();
   const udp_packet_max_size: usize = 65536;
   let mut packet_buffer = [0 as u8; udp_packet_max_size];
-  let mut output_buffer = [0 as u8; udp_packet_max_size];
-  let zeros_buffer = [0 as u8; udp_packet_max_size];
+  //let mut output_buffer = [0 as u8; udp_packet_max_size];
+  //let zeros_buffer = [0 as u8; udp_packet_max_size];
   const udp_receiver_counter_size: usize = std::mem::size_of::<udp_receiver_counter_type>();
 
   // check parameters, some are not supported
@@ -114,7 +116,7 @@ fn main() {
     filterbank.telescope_id = Some(telescope_id);
     filterbank.machine_id = Some(machine_id);
     filterbank.rawdatafile = Some(rawdatafile);
-    filterbank.source_name = Some(source_name);
+    filterbank.source_name = Some(source_name.clone());
     filterbank.data_type = Some(data_type);
     filterbank.fch1 = Some(fch1);
     filterbank.foff = Some(foff);
@@ -128,7 +130,17 @@ fn main() {
     filterbank.tstart = Some(tstart);
     //filterbank.nsamples = Some(nsamples);
 
-    let mut nsamples = 0;
+    // data storage
+    let file_header = filterbank.header_bytes();
+    let file_content_length = expected_written_data_length * target_nsamples as usize;
+    let mut file_content = Vec::with_capacity(file_content_length);
+    // no init
+    unsafe {
+      file_content.set_len(file_content_length);
+    }
+    let mut file_content_pos = 0 as usize;
+
+    let mut nsamples = 0 as u32;
     while (nsamples < target_nsamples) {
       // receive packet & check length
       let data_length = socket.recv(&mut packet_buffer).unwrap() - udp_receiver_counter_size;
@@ -139,7 +151,7 @@ fn main() {
         continue;
       }
       let output_length = expected_written_data_length;
-      assert!(output_length <= output_buffer.len());
+      assert!(output_length <= file_content.len() - file_content_pos);
 
       // data structure:
       //     xxxxxxxxxxxxxx......xxxxxx  <-- one sample
@@ -163,9 +175,9 @@ fn main() {
             "[main] warning: data loss detected: skipped {} packets. Filling with 0",
             lost_packets
           );
-          for _ in 0..lost_packets {
-            filterbank.push(&zeros_buffer[0..output_length]);
-          }
+          let zero_count = lost_packets as usize * output_length;
+          file_content[file_content_pos..file_content_pos + zero_count].fill(0);
+          file_content_pos += zero_count;
         }
       }
       nsamples += 1;
@@ -181,35 +193,37 @@ fn main() {
       //  deinterlace is therefore required.
       //  3) do not do extra process
       // moreover, `dedisperse`'s algorithm requires foff < 0, but input often has foff > 0, so need to reverse channels.
-      let offset = udp_receiver_counter_size;
+      let packet_buffer_offset = udp_receiver_counter_size;
       if (sum_ifs == true) {
         if (nbits == 8) {
           // average every two bytes
 
           // manually check boundaries
           // the compiler isn't smart enough
-          assert!(offset + 2 * output_length <= packet_buffer.len());
-          assert!(output_length <= output_buffer.len());
+          assert!(packet_buffer_offset + 2 * output_length <= packet_buffer.len());
+
+          assert!(output_length <= file_content.len() - file_content_pos);
           if (reverse_channel) {
             for i in 0..output_length {
-              //output_buffer[output_length - i - 1] =
+              //file_content[file_content_pos + output_length - i - 1] =
               //  ((packet_buffer[offset + 2 * i] / 2) + (packet_buffer[offset + 2 * i + 1] / 2));
 
               // rustc, listen, you must generate SIMD instructions, make use of ymm registers on amd64, do you understand ?!
               unsafe {
-                *output_buffer.get_unchecked_mut(output_length - i - 1) =
-                  ((*packet_buffer.get_unchecked(offset + 2 * i)) / 2
-                    + (*packet_buffer.get_unchecked(offset + 2 * i + 1) / 2));
+                *file_content.get_unchecked_mut(file_content_pos + output_length - i - 1) =
+                  ((*packet_buffer.get_unchecked(packet_buffer_offset + 2 * i)) / 2
+                    + (*packet_buffer.get_unchecked(packet_buffer_offset + 2 * i + 1) / 2));
               }
               // verify: (with debug info)
               // cargo objdump --release -- -S -C -d > /tmp/filterbank_udp_receiver.txt
             }
           } else {
             for i in 0..output_length {
-              //output_buffer[i] = ((packet_buffer[offset + 2 * i] / 2) + (packet_buffer[offset + 2 * i + 1] / 2));
+              //file_content[file_content_pos + i] = ((packet_buffer[offset + 2 * i] / 2) + (packet_buffer[offset + 2 * i + 1] / 2));
               unsafe {
-                *output_buffer.get_unchecked_mut(i) = ((*packet_buffer.get_unchecked(offset + 2 * i) / 2)
-                  + (*packet_buffer.get_unchecked(offset + 2 * i + 1) / 2));
+                *file_content.get_unchecked_mut(file_content_pos + i) =
+                  ((*packet_buffer.get_unchecked(packet_buffer_offset + 2 * i) / 2)
+                    + (*packet_buffer.get_unchecked(packet_buffer_offset + 2 * i + 1) / 2));
               }
             }
           }
@@ -218,27 +232,28 @@ fn main() {
         }
       } else if (nifs == 2 && deinterlace_channel == true) {
         if (nbits == 8) {
-          assert!(output_length <= output_buffer.len());
-          assert!(offset + output_length <= packet_buffer.len());
+          assert!(output_length <= file_content.len() - file_content_pos);
+          assert!(packet_buffer_offset + output_length <= packet_buffer.len());
           if (reverse_channel == true) {
             for i in 0..(output_length / 2) {
-              //output_buffer[(output_length / 2) - 1 - i] = packet_buffer[offset + 2 * i];
-              //output_buffer[output_length - 1 - i] = packet_buffer[offset + 2 * i + 1];
+              //file_content[file_content_pos + (output_length / 2) - 1 - i] = packet_buffer[offset + 2 * i];
+              //file_content[file_content_pos + output_length - 1 - i] = packet_buffer[offset + 2 * i + 1];
               unsafe {
-                *output_buffer.get_unchecked_mut((output_length / 2) - 1 - i) =
-                  *packet_buffer.get_unchecked(offset + 2 * i);
-                *output_buffer.get_unchecked_mut(output_length - 1 - i) =
-                  *packet_buffer.get_unchecked(offset + 2 * i + 1)
+                *file_content.get_unchecked_mut(file_content_pos + (output_length / 2) - 1 - i) =
+                  *packet_buffer.get_unchecked(packet_buffer_offset + 2 * i);
+                *file_content.get_unchecked_mut(file_content_pos + output_length - 1 - i) =
+                  *packet_buffer.get_unchecked(packet_buffer_offset + 2 * i + 1)
               }
             }
           } else {
             for i in 0..(output_length / 2) {
-              //output_buffer[i] = packet_buffer[offset + 2 * i];
-              //output_buffer[i + (output_length / 2)] = packet_buffer[offset + 2 * i + 1];
+              //file_content[file_content_pos + i] = packet_buffer[offset + 2 * i];
+              //file_content[file_content_pos + i + (output_length / 2)] = packet_buffer[offset + 2 * i + 1];
               unsafe {
-                *output_buffer.get_unchecked_mut(i) = *packet_buffer.get_unchecked(offset + 2 * i);
-                *output_buffer.get_unchecked_mut(i + (output_length / 2)) =
-                  *packet_buffer.get_unchecked(offset + 2 * i + 1)
+                *file_content.get_unchecked_mut(file_content_pos + i) =
+                  *packet_buffer.get_unchecked(packet_buffer_offset + 2 * i);
+                *file_content.get_unchecked_mut(file_content_pos + i + (output_length / 2)) =
+                  *packet_buffer.get_unchecked(packet_buffer_offset + 2 * i + 1)
               }
             }
           }
@@ -246,31 +261,38 @@ fn main() {
           panic!("[main] deinterlace_channel: TODO: nbits == 1, 2, 4 and reverse");
         }
       } else {
-        assert!(output_length <= output_buffer.len());
-        assert!(offset + output_length <= packet_buffer.len());
+        assert!(output_length <= file_content.len() - file_content_pos);
+        assert!(packet_buffer_offset + output_length <= packet_buffer.len());
         if (reverse_channel == true) {
           for i in 0..output_length {
-            //output_buffer[output_length - 1 - i] = packet_buffer[offset + i];
+            //file_content[file_content_pos + output_length - 1 - i] = packet_buffer[offset + i];
             unsafe {
-              *output_buffer.get_unchecked_mut(output_length - 1 - i) = *packet_buffer.get_unchecked(offset + i);
+              *file_content.get_unchecked_mut(file_content_pos + output_length - 1 - i) =
+                *packet_buffer.get_unchecked(packet_buffer_offset + i);
             }
           }
         } else {
           for i in 0..output_length {
-            //output_buffer[i] = packet_buffer[offset + i];
+            //file_content[file_content_pos + i] = packet_buffer[offset + i];
             unsafe {
-              *output_buffer.get_unchecked_mut(i) = *packet_buffer.get_unchecked(offset + i);
+              *file_content.get_unchecked_mut(file_content_pos + i) =
+                *packet_buffer.get_unchecked(packet_buffer_offset + i);
             }
           }
         }
       }
 
-      filterbank.push(&output_buffer[0..output_length]);
+      file_content_pos += output_length;
     }
 
-    file.write(&filterbank.bytes()).unwrap();
+    thread_pool.execute(move || {
+      file.write(&file_header).unwrap();
+      file
+        .write(&file_content[0..nsamples as usize * expected_written_data_length])
+        .unwrap();
+    });
 
-    break;
+    //break;
   }
 
   //

@@ -1,2 +1,5 @@
 # generated filterbank file
 *.fil
+
+# CPython cache
+__pycache__/

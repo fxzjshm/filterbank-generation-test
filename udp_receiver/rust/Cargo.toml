@@ -14,6 +14,7 @@ debug = true
 chrono = "0.4.23"
 julianday = "1.2.0"
 sigproc_filterbank = "0.3.0"
+threadpool = "1.8.1"
 
 [dependencies.pyo3]
 version = "0.15.1"  # for Python 3.6 on a CentOS 7 machine
